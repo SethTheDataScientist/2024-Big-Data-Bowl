@@ -31,7 +31,7 @@ DefTeamTable <- FullTeamTable %>%
                           RushPercentRankIT) / 3,
          TotalPercentRankPUR = 1 - percent_rank(TotalVoronoi),
          TotalPercentRankSU = percent_rank(TotalShielding),
-         TotalPercentRankIT =  percent_rank(TotalRootMeanSquaredDeviation),
+         TotalPercentRankIT = 1- percent_rank(TotalRootMeanSquaredDeviation),
          TotalPURSUIT = (TotalPercentRankPUR +
                            TotalPercentRankSU + 
                            TotalPercentRankIT) / 3,
@@ -166,20 +166,20 @@ DefTable <- Full_Defense %>%
                           RushPercentRankIT) / 3,
          TotalPercentRankPUR = 1 - percent_rank(TotalVoronoi),
          TotalPercentRankSU = percent_rank(TotalShielding),
-         TotalPercentRankIT =  percent_rank(TotalRootMeanSquaredDeviation),
+         TotalPercentRankIT =  1- percent_rank(TotalRootMeanSquaredDeviation),
          TotalPURSUIT = (TotalPercentRankPUR +
                           TotalPercentRankSU + 
                           TotalPercentRankIT) / 3,
          Team = club_x
   ) %>% 
   ungroup() %>% 
-  filter(Alt_Position == "DB") %>% 
+  filter(Alt_Position == "DL") %>% 
   mutate(
     Player = displayName,
-    Voronoi_Reduction = RushVoronoi,
-    Shielding_Upfield = RushShielding * 100,
-    Ideal_Angle = RushRootMeanSquaredDeviation,
-    PURSUIT = RushPURSUIT,
+    Voronoi_Reduction = TotalVoronoi,
+    Shielding_Upfield = TotalShielding * 100,
+    Ideal_Angle = TotalRootMeanSquaredDeviation,
+    PURSUIT = TotalPURSUIT,
     TopBottom = if_else(PURSUIT >= 0.5, "Top 10", "Bottom 10"),
   ) %>% 
   group_by(TopBottom) %>% 
@@ -212,18 +212,18 @@ table = gt(top_and_bottom_10) %>%
   opt_row_striping() %>% 
   gt_theme_espn() %>% 
   tab_header(
-    title = md("Defensive Back Rush Values"),
+    title = md("Defensive Line Total Values"),
     subtitle = "Voronoi Area Sum Allowed, Shielding  Percentage, and Deviation from Ideal Angle (Weighted Percentile of Voronoi, Shielding, and Ideal Angle)") %>% 
   tab_source_note("Table: @SethDataScience | 2024 Big Data Bowl | Data: 2022 Weeks 1-9 | Min. 25 Total Snaps") %>% 
   gt_nfl_wordmarks(column ="Team", height = 30, locations = NULL)
 
 
 
-gtsave(table, "DB Rush PURSUIT.png")
+gtsave(table, "DL Total PURSUIT.png")
 
 
 
-# Gravity Plot ------------------------------------------------------------
+# Field Plot Inputs------------------------------------------------------------
 library(deldir)
 library(magick)
 library(ggforce)
@@ -231,9 +231,15 @@ library(gganimate)
 library(transformr)
 
 AllGamesYAC <- read_csv("DataBowl/2024-Big-Data-Bowl/Created_DF/AllGamesYAC.csv")
+
+AllGamesBreakThrough <- read_csv("DataBowl/2024-Big-Data-Bowl/Created_DF/AllGamesBreakthrough.csv")
+
 select_plays <- read_csv("DataBowl/2024-Big-Data-Bowl/Created_DF/viz_play.csv")
 
 select_plays_values <- read_csv("DataBowl/2024-Big-Data-Bowl/Created_DF/viz_play_values.csv")
+
+select_plays_values <- select_plays_values %>% 
+  select(gameId, playId, frameId, nflId, Min_y, Max_y, Min_x, Max_x, Covering, radiansDirection)
 
 
 # Line Plot ---------------------------------------------------------------
@@ -255,9 +261,9 @@ ggplot(select_plays_values, aes(x = Time, y = area))+
 
 animation = ggplot(select_plays_values, aes(x = Time)) +
   #geom_line(aes(y = a, color = "Acceleration")) +
-  #geom_line(aes(y = area, color = "Voronoi Area")) +
+  geom_line(aes(y = area, color = "Voronoi Area")) +
   #geom_line(aes(y = adjusted_change, color = "Adjusted Voronoi Area")) +
-  geom_line(aes(y = ScalingFactor, color = "Scaling Factor (Defenders Nearby)")) +
+  #geom_line(aes(y = ScalingFactor, color = "Scaling Factor (Defenders Nearby)")) +
   geom_hline(yintercept = 0, linetype = "dashed") +
   scale_color_manual(values = c(
     "Acceleration" = "blue",
@@ -266,8 +272,8 @@ animation = ggplot(select_plays_values, aes(x = Time)) +
     "Scaling Factor (Defenders Nearby)" = "purple")) +
   scale_x_continuous(breaks = seq(1, 300, 1))+
   labs(
-    #title = "Components of Voronoi Area During Play",
-    y = "Scaling Factor (Defenders Nearby)",
+    title = "Components of Voronoi Area During Play",
+    y = "Voronoi Area",
     caption = "@SethDataScience | Data: GameId = 2022110604, PlayId = 221",
     color = "LegendTitle"
   ) +
@@ -281,7 +287,7 @@ lengthVIZ <- length(unique(select_plays_values$Time))
 
 
 animate(animation, fps = 25, nframe = lengthVIZ,
-        height = 400, width = 700)
+        height = 600, width = 700)
 
 
 
@@ -289,30 +295,46 @@ animate(animation, fps = 25, nframe = lengthVIZ,
 ScalingFactor = 2
 
 SelectPlay <- select_plays %>%
+  left_join(select_plays_values, by = c("gameId", "playId", "frameId", "nflId")) %>% 
   filter(club != "football",
-         frameId > 7) %>% 
+         nflId == 42358 | nflId == 47872,
+         frameId <= 25) %>% 
   mutate(x = if_else(is.na(x) == 1, 0, x * ScalingFactor),
          y = if_else(is.na(y) == 1, 0, y * ScalingFactor),
+         # Min_x = if_else(nflId == 47872,
+         #                       Min_x,
+         #                       10000),
+         # Max_x = if_else(nflId == 47872,
+         #                 Max_x,
+         #                 10000),
+         # Min_y = if_else(nflId == 47872,
+         #                 Min_y,
+         #                 10000),
+         # Max_y = if_else(nflId == 47872,
+         #                 Max_y,
+         #                 10000),
          HasBall = if_else(frameId >= 2,
                            1,
                            0.000000000000000001),
-         ballCarrier = if_else(nflId == 46116,
+         ballCarrier = if_else(nflId == 42358,
                                HasBall * 100,
-                               0.000000000000001)) %>% 
-  group_by(frameId)
-  # mutate(
-  #   x_max = max(x)+1,
-  #   x_min = min(x)-1,
-  #   y_max = max(y)+1,
-  #   y_min = min(y)-1,
-  #   bound = cbind(c(y_min, y_max, y_max), c(x_min, x_min, x_max, x_max)))
+                               0.000000000000001),
+         CoveringAlpha = if_else(Covering == 1,
+                                1,
+                               0.000000000000001),
+         radiansDirection = if_else(radiansDirection < 0, radiansDirection + 2 * pi, radiansDirection ),
+         RadiansAngle = -1 * (radiansDirection + pi)) %>% 
+  filter(!is.na(Min_y)) %>% 
+  group_by(nflId) %>% 
+  mutate(
+    Time = seq(1, n()))
 
 
 hash_right <- 38.35 * ScalingFactor
 hash_left <- 12 * ScalingFactor
 hash_width <- 3.3 * ScalingFactor
 # Define the range of coordinates
-xmin <- 0 * ScalingFactor
+xmin <- 27 * ScalingFactor
 xmax <- 53.3 * ScalingFactor
 ymin <- max(round(min(SelectPlay$x, 
                       na.rm = TRUE) - (5 * ScalingFactor), -1), 0 * ScalingFactor)
@@ -350,7 +372,7 @@ field_base <- ggplot() +
            xend = c(xmin, xmax, xmax, xmin), yend = c(ymax, ymax, ymin, ymin), color = "black")
 
 
-# Animated VIZ ---- 
+# Voronoi VIZ ---- 
 # 
 # triangle <- cbind(c(0, 53.3 * ScalingFactor, 53.3 * ScalingFactor, 0), c(60 * ScalingFactor, 60 * ScalingFactor, 90 * ScalingFactor, 90 * ScalingFactor))
 
@@ -396,6 +418,90 @@ animate(play_animationVIZ, fps = 25, nframe = ex_play_lengthVIZ, height = 1200, 
 
 
 
+# Shielding Viz -----------------------------------------------------------
+
+play_animationVIZ = field_base+
+  geom_segment(aes(x = xmax, xend = xmax,
+                   y = 65* ScalingFactor,
+                   yend = 85* ScalingFactor),
+               color = "black")+
+  geom_point(data = SelectPlay, 
+             aes(x = (xmax - y), y = x,
+                 group = nflId, 
+                 fill = primary,
+                 color = primary,
+             ),
+             size = 7 * ScalingFactor) +
+  geom_ellipse(data = SelectPlay, 
+               aes(x0 = (xmax-y),
+                   y0 = x,
+                   b = Max_y * ScalingFactor - y,
+                   a = Max_x * ScalingFactor - x,
+                   angle = radiansDirection,
+                   group = nflId, 
+                   color = primary))+
+  geom_text(data = SelectPlay,
+            aes(x = (xmax-y), y = x, label = jerseyNumber),
+            color = "white",
+            size = 3.5 * ScalingFactor,
+            vjust = 0.36 * ScalingFactor) +
+  scale_shape_manual(values = c(21, 16, 21), guide = FALSE) +
+  scale_fill_identity(aesthetics = c("fill", "color")) +
+  ylim(65* ScalingFactor, 85* ScalingFactor)+
+  xlim(27* ScalingFactor, xmax)+
+  cowplot::theme_nothing() + theme(plot.title = element_text(),
+                                   plot.subtitle = element_text(),
+                                   plot.caption = element_text()) +
+  # labs(caption = "@SethDataScience | Data: GameId = 2022100600, PlayId = 226")+
+  transition_time(SelectPlay$frameId) +
+  ease_aes('linear') + NULL
+
+
+ex_play_lengthVIZ <- length(unique(SelectPlay$frameId))
+
+
+animate(play_animationVIZ, fps = 25, nframe = ex_play_lengthVIZ, height = 1200, width = 1000)
+
+
+
+field_base+
+  geom_segment(aes(x = xmax, xend = xmax,
+                   y = 65* ScalingFactor,
+                   yend = 85* ScalingFactor),
+               color = "black")+
+  geom_point(data = SelectPlay, 
+             aes(x = (xmax - y), y = x,
+                 group = nflId, 
+                 fill = primary,
+                 color = primary,
+             ),
+             size = 7 * ScalingFactor) +
+  geom_ellipse(data = SelectPlay, 
+               aes(x0 = (xmax-y),
+                   y0 = x,
+                   a = Max_y * ScalingFactor - y,
+                   b = Max_x * ScalingFactor - x,
+                   angle = pi/2,
+                   group = nflId, 
+                   color = primary,
+                   fill = primary,
+                   alpha = CoveringAlpha))+
+  geom_text(data = SelectPlay,
+            aes(x = (xmax-y), y = x, label = jerseyNumber),
+            color = "white",
+            size = 3.5 * ScalingFactor,
+            vjust = 0.36 * ScalingFactor) +
+  ylim(60* ScalingFactor, 90* ScalingFactor)+
+  xlim(27* ScalingFactor, xmax+5)+
+  scale_shape_manual(values = c(21, 16, 21), guide = FALSE) +
+  scale_fill_identity(aesthetics = c("fill", "color")) +
+  cowplot::theme_nothing() + theme(plot.title = element_text(),
+                                   plot.subtitle = element_text(),
+                                   plot.caption = element_text()) +
+  transition_time(SelectPlay$frameId) +
+  ease_aes('linear') + NULL
+
+#
 # Validation Random Plots -------------------------------------------------
 
 AllGamesBreakthrough <- read_csv("DataBowl/2024-Big-Data-Bowl/Created_DF/AllGamesBreakthrough.csv")
@@ -458,7 +564,7 @@ DefTable <- Full_Defense %>%
                           RushPercentRankIT) / 3,
          TotalPercentRankPUR = 1 - percent_rank(TotalVoronoi),
          TotalPercentRankSU = percent_rank(TotalShielding),
-         TotalPercentRankIT =  percent_rank(TotalRootMeanSquaredDeviation),
+         TotalPercentRankIT =  1 - percent_rank(TotalRootMeanSquaredDeviation),
          TotalPURSUIT = (TotalPercentRankPUR +
                            TotalPercentRankSU + 
                            TotalPercentRankIT) / 3,
@@ -479,3 +585,30 @@ ggplot(DefTable,
     x = "Voronoi Area Reduction",
     caption = "@SethDataScience"
   )
+
+
+# YAC vs PURSUIT ----------------------------------------------------------
+YacPursuit_df <- read_csv("DataBowl/2024-Big-Data-Bowl/Created_DF/YACvsPURSUIT.csv")
+
+YacPursuit = YacPursuit_df %>% 
+  mutate(
+  PercentRankPUR = 1 - percent_rank(Voronoi),
+PercentRankSU = percent_rank(Shielding),
+PercentRankIT =  1 - percent_rank(Deviation),
+PURSUIT = (PercentRankPUR +
+                  PercentRankSU + 
+                  PercentRankIT) / 3)
+
+ggplot(YacPursuit,
+       aes(x = YardsAfterCatch, y = PercentRankIT))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+theme_reach()+
+  labs(
+    title = "Deviation from Ideal Angle vs Yards After Catch",
+    subtitle = "Includes All Plays (After Catch counts from after handoff for run plays)",
+    y = "Deviation",
+    x = "Yards After Catch",
+    caption = "@SethDataScience"
+  )
+
