@@ -236,49 +236,95 @@ AllGamesBreakThrough <- read_csv("DataBowl/2024-Big-Data-Bowl/Created_DF/AllGame
 
 select_plays <- read_csv("DataBowl/2024-Big-Data-Bowl/Created_DF/viz_play.csv")
 
-select_plays_values <- read_csv("DataBowl/2024-Big-Data-Bowl/Created_DF/viz_play_values.csv")
+select_plays_values <- read_csv("DataBowl/2024-Big-Data-Bowl/Created_DF/viz_play_values.csv") %>% 
+  mutate(PR = 100-(1-PR))  
+  group_by(nflId) %>% 
+  mutate(Time = seq(1, n()),
+         Shielding = cummean(1-Covering),
+         Line1 = if_else(Time >= 10, 1, 0),
+         Line2 = if_else(Time >= 20, 1, 0)) %>% 
+  filter(nflId == 52546)
 
-select_plays_values <- select_plays_values %>% 
-  select(gameId, playId, frameId, nflId, Min_y, Max_y, Min_x, Max_x, Covering, radiansDirection)
+select_plays_values_frame <- select_plays_values %>% 
+  group_by(frameId) %>%
+  summarise(FrameVor = head(PR, 1),
+            FrameShielding = mean(1-Covering, na.rm = T),
+         FrameDeviation = mean(Deviation, na.rm = T)) %>% 
+  group_by() %>% 
+  mutate(Time = seq(1, n()),
+         Line1 = if_else(Time >= 10, 1, 0),
+         Line2 = if_else(Time >= 20, 1, 0))
 
 
 # Line Plot ---------------------------------------------------------------
 
-ggplot(select_plays_values, aes(x = Time, y = area))+
-  geom_line(aes(color = primary))+
-  geom_line(aes(y = a, color = "Acceleration (Divided by 10)")) +
-  geom_line(aes(y = area, color = "Voronoi Area")) +
-  geom_line(aes(y = adjusted_change, color = "Adjusted Voronoi Area")) +
-  geom_hline(yintercept = 0, linetype = "dashed")+
-  scale_color_manual(values = c("Acceleration (Divided by 10)" = "blue", "Voronoi Area" = "darkgreen", "Adjusted Voronoi Area" = "darkred"))+
-  scale_x_continuous(breaks = seq(1,300, 1))+
-  labs(
-    title = "Regular and Adjusted Voronoi Area During Play",
-    y = "Voronoi Area"
-  )+
-  theme_reach()
+ggplot(select_plays_values_frame, aes(x = Time, y = FrameVor))+
+  geom_line()+
+  geom_line(aes(y = FrameDeviation, color = "red"))+
+  geom_line(aes(y = FrameShielding*100, color = "green"))+
+  theme_reach()+
+  scale_color_identity(aesthetics = c("color", "fill"))
 
 
-animation = ggplot(select_plays_values, aes(x = Time)) +
-  #geom_line(aes(y = a, color = "Acceleration")) +
-  geom_line(aes(y = area, color = "Voronoi Area")) +
-  #geom_line(aes(y = adjusted_change, color = "Adjusted Voronoi Area")) +
-  #geom_line(aes(y = ScalingFactor, color = "Scaling Factor (Defenders Nearby)")) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
+animation = ggplot(select_plays_values_frame, aes(x = Time)) +
+  geom_line(aes(y = FrameVor, color = "Percentile Voronoi Area")) +
+  geom_line(aes(y = FrameDeviation, color = "Mean Angle Deviation")) +
+  geom_line(aes(y = FrameShielding*100, color = "Total Shielding Percent")) +
+  geom_vline(aes(xintercept = 10, alpha = Line1))+
+  geom_vline(aes(xintercept = 20, alpha = Line2))+
   scale_color_manual(values = c(
-    "Acceleration" = "blue",
-    "Voronoi Area" = "darkgreen",
-    "Adjusted Voronoi Area" = "darkred",
-    "Scaling Factor (Defenders Nearby)" = "purple")) +
+    "Percentile Voronoi Area" = "blue",
+    "Mean Angle Deviation" = "darkgreen",
+    "Total Shielding Percent" = "darkred")) +
   scale_x_continuous(breaks = seq(1, 300, 1))+
+  scale_alpha(guide = "none")+
+  ylim(0,120)+
   labs(
-    title = "Components of Voronoi Area During Play",
-    y = "Voronoi Area",
-    caption = "@SethDataScience | Data: GameId = 2022110604, PlayId = 221",
+    title = "Components of PURSUIT During Play",
+    y = "Voronoi Area Percentile / Shielding Percent / Angle Deviation",
+    # caption = "@SethDataScience | Data: GameId = 2022092502, PlayId = 664",
     color = "LegendTitle"
   ) +
   theme_reach() + 
   theme(legend.position = "top")+
+  transition_reveal(select_plays_values_frame$Time) +
+  ease_aes('linear') + NULL
+
+
+lengthVIZ <- length(unique(select_plays_values_frame$Time))
+
+
+animate(animation, fps = 25, nframe = lengthVIZ,
+        height = 600, width = 700)
+
+
+#lJarius Sneed
+
+ggplot(select_plays_values, aes(x = Time, y = PR))+
+  geom_line()+
+  geom_line(aes(y = Deviation, color = "red"))+
+  geom_line(aes(y = Shielding*100, color = "green"))+
+  theme_reach()+
+  scale_color_identity(aesthetics = c("color", "fill"))
+
+
+animation = ggplot(select_plays_values, aes(x = Time)) +
+  geom_line(aes(y = PR, color = "Percentile Voronoi Area")) +
+  geom_line(aes(y = Deviation, color = "Mean Angle Deviation")) +
+  geom_line(aes(y = Shielding*100, color = "Total Shielding Percent")) +
+  geom_vline(aes(xintercept = 10, alpha = Line1))+
+  geom_vline(aes(xintercept = 20, alpha = Line2))+
+  scale_color_manual(values = c(
+    "Percentile Voronoi Area" = "blue",
+    "Mean Angle Deviation" = "darkgreen",
+    "Total Shielding Percent" = "darkred")) +
+  scale_x_continuous(breaks = seq(1, 300, 1))+
+  ylim(0,120)+
+  labs(
+    title = "L'Jarius Sneed PURSUIT",
+    y = "Voronoi Area Percentile / Shielding Percent / Angle Deviation",    caption = "@SethDataScience | Data: GameId = 2022092502, PlayId = 664"
+  ) +
+  theme_reach() + 
   transition_reveal(select_plays_values$Time) +
   ease_aes('linear') + NULL
 
@@ -288,43 +334,18 @@ lengthVIZ <- length(unique(select_plays_values$Time))
 
 animate(animation, fps = 25, nframe = lengthVIZ,
         height = 600, width = 700)
-
+#
 
 
 # Field stuff -------------------------------------------------------------
-ScalingFactor = 2
+ScalingFactor = 1
+
 
 SelectPlay <- select_plays %>%
-  left_join(select_plays_values, by = c("gameId", "playId", "frameId", "nflId")) %>% 
-  filter(club != "football",
-         nflId == 42358 | nflId == 47872,
-         frameId <= 25) %>% 
+  filter(frameId == 5, club != "football") %>% 
   mutate(x = if_else(is.na(x) == 1, 0, x * ScalingFactor),
          y = if_else(is.na(y) == 1, 0, y * ScalingFactor),
-         # Min_x = if_else(nflId == 47872,
-         #                       Min_x,
-         #                       10000),
-         # Max_x = if_else(nflId == 47872,
-         #                 Max_x,
-         #                 10000),
-         # Min_y = if_else(nflId == 47872,
-         #                 Min_y,
-         #                 10000),
-         # Max_y = if_else(nflId == 47872,
-         #                 Max_y,
-         #                 10000),
-         HasBall = if_else(frameId >= 2,
-                           1,
-                           0.000000000000000001),
-         ballCarrier = if_else(nflId == 42358,
-                               HasBall * 100,
-                               0.000000000000001),
-         CoveringAlpha = if_else(Covering == 1,
-                                1,
-                               0.000000000000001),
-         radiansDirection = if_else(radiansDirection < 0, radiansDirection + 2 * pi, radiansDirection ),
-         RadiansAngle = -1 * (radiansDirection + pi)) %>% 
-  filter(!is.na(Min_y)) %>% 
+         ) %>% 
   group_by(nflId) %>% 
   mutate(
     Time = seq(1, n()))
@@ -334,7 +355,7 @@ hash_right <- 38.35 * ScalingFactor
 hash_left <- 12 * ScalingFactor
 hash_width <- 3.3 * ScalingFactor
 # Define the range of coordinates
-xmin <- 27 * ScalingFactor
+xmin <- 0 * ScalingFactor
 xmax <- 53.3 * ScalingFactor
 ymin <- max(round(min(SelectPlay$x, 
                       na.rm = TRUE) - (5 * ScalingFactor), -1), 0 * ScalingFactor)
@@ -379,45 +400,72 @@ field_base <- ggplot() +
 
 triangle <- cbind(c(xmin, xmax, xmax, xmin), c(ymin, ymin, ymax, ymax))
 
-play_animationVIZ = field_base+
-  geom_voronoi_tile(data = SelectPlay,
-                    aes(x = (xmax - y), y = x,
-                        fill = "#0e8326", group = -1,
-                        alpha = ballCarrier),
-                        bound = triangle)+
+  ggplot(data = SelectPlay)+
   geom_voronoi_segment(data = SelectPlay,
                     aes(x = (xmax - y), y = x),
                     color = "black")+
-  geom_point(data = SelectPlay, 
-             aes(x = (xmax - y), y = x,
-                 group = nflId, 
-                 fill = primary,
-                 color = primary,
+  geom_point(aes(x = (xmax - y), y = x
                  ),
-             size = 7 * ScalingFactor) +
-  geom_text(data = SelectPlay,
-            aes(x = (xmax-y), y = x, label = jerseyNumber),
-            color = "white",
-                size = 3.5 * ScalingFactor,
-            vjust = 0.36 * ScalingFactor) +
-  scale_shape_manual(values = c(21, 16, 21), guide = FALSE) +
-  scale_fill_identity(aesthetics = c("fill", "color")) +
+                 fill = "white") +
   ylim(ymin, ymax)+
   cowplot::theme_nothing() + theme(plot.title = element_text(),
                                    plot.subtitle = element_text(),
-                                   plot.caption = element_text()) +
-  labs(caption = "@SethDataScience | Data: GameId = 2022110604, PlayId = 221")+
-  transition_time(SelectPlay$frameId) +
-  ease_aes('linear') + NULL
-
-
-ex_play_lengthVIZ <- length(unique(SelectPlay$frameId))
-
-
-animate(play_animationVIZ, fps = 25, nframe = ex_play_lengthVIZ, height = 1200, width = 1000)
+                                   plot.caption = element_text())
 
 
 
+# Gif Stitcher ------------------------------------------------------------
+library(magick)
+  library(av)
+  
+  # List of paths to your GIFs
+  gif_paths <- image_read("C:/Users/sethl/OneDrive/Important Stuff/R/R files/NFL/DataBowl/2024-Big-Data-Bowl/Plots/Components of PURSUIT Line Plot.gif")
+  
+gif_1 <- image_read("C:/Users/sethl/OneDrive/Important Stuff/R/R files/NFL/DataBowl/2024-Big-Data-Bowl/Plots/lJarius Sneed PURSUIT.gif")
+
+
+
+new_gif <- image_append(c(gif_paths[1], gif_1[1]), stack = T)
+for(i in 2:32){
+  combined <- image_append(c(gif_paths[i], gif_1[i]), stack = T)
+  new_gif <- c(new_gif, combined)
+}
+new_gif
+
+
+gif_app <- image_read("C:/Users/sethl/OneDrive/Important Stuff/R/R files/NFL/DataBowl/2024-Big-Data-Bowl/Plots/Stacked PURSUIT.gif")
+
+#app_width = image_info(gif_app)$height[1]
+
+gif_2 <- image_read("C:/Users/sethl/OneDrive/Important Stuff/R/R files/NFL/DataBowl/2024-Big-Data-Bowl/Plots/Full Play.gif")
+
+play <- image_read("C:/Users/sethl/OneDrive/Important Stuff/R/R files/NFL/DataBowl/2024-Big-Data-Bowl/Plots/Full Play Real.gif")
+
+
+play <- image_scale(play, '1000x600!')
+
+
+
+new_gif <- image_append(c(play[1], gif_2[1]), stack = T)
+for(i in 2:32){
+  combined <- image_append(c(play[i], gif_2[i]), stack = T)
+  new_gif <- c(new_gif, combined)
+}
+new_gif
+
+
+
+play_2 <- image_read("C:/Users/sethl/OneDrive/Important Stuff/R/R files/NFL/DataBowl/2024-Big-Data-Bowl/Plots/Play Stacked.gif")
+
+
+  new_gif <- image_append(c(play_2[1], gif_app[1]), stack = F)
+  for(i in 2:32){
+    combined <- image_append(c(play_2[i], gif_app[i]), stack = F)
+    new_gif <- c(new_gif, combined)
+  }
+  new_gif
+  
+#
 # Shielding Viz -----------------------------------------------------------
 
 play_animationVIZ = field_base+
@@ -462,8 +510,6 @@ ex_play_lengthVIZ <- length(unique(SelectPlay$frameId))
 
 animate(play_animationVIZ, fps = 25, nframe = ex_play_lengthVIZ, height = 1200, width = 1000)
 
-
-
 field_base+
   geom_segment(aes(x = xmax, xend = xmax,
                    y = 65* ScalingFactor,
@@ -481,7 +527,7 @@ field_base+
                    y0 = x,
                    a = Max_y * ScalingFactor - y,
                    b = Max_x * ScalingFactor - x,
-                   angle = pi/2,
+                   angle = RadiansAngle,
                    group = nflId, 
                    color = primary,
                    fill = primary,
@@ -509,6 +555,9 @@ AllGamesBreakthrough <- read_csv("DataBowl/2024-Big-Data-Bowl/Created_DF/AllGame
 AllGamesYAC <- read_csv("DataBowl/2024-Big-Data-Bowl/Created_DF/AllGamesYAC.csv")
 
 AllGamesDeviation <- read_csv("DataBowl/2024-Big-Data-Bowl/Created_DF/AllGamesDeviation.csv")
+
+Closest <- read_csv("DataBowl/2024-Big-Data-Bowl/Created_DF/AllGamesDefenseClosest.csv")
+
 
 Voronoi_plot_data = AllGamesDeviation %>% 
   group_by(gameId, playId) %>% 
@@ -612,3 +661,68 @@ theme_reach()+
     caption = "@SethDataScience"
   )
 
+
+
+
+# Stability ---------------------------------------------------------------
+
+FirstHalf <- SeasonNFL %>% 
+  group_by() %>% 
+  arrange(desc(week)) %>% 
+  mutate(index = seq(1, n())) %>% 
+  filter(index <= 2518)%>% 
+  group_by(player_id) %>% 
+  summarise(Voronoi_Area = mean(Voronoi_Area),
+            Shielding = mean(Shielding),
+            Deviation = mean(Deviation),
+            Pursuit = mean(Pursuit)
+            )
+
+SecondHalf <- SeasonNFL %>%
+  group_by() %>% 
+  arrange(desc(week)) %>% 
+  mutate(index = seq(1, n())) %>% 
+  filter(index > 2518) %>% 
+  group_by(player_id) %>% 
+  summarise(Voronoi_Area = mean(Voronoi_Area),
+            Shielding = mean(Shielding),
+            Deviation = mean(Deviation),
+            Pursuit = mean(Pursuit)
+            )
+
+Stability <- FirstHalf %>% 
+  inner_join(SecondHalf, by = c("player_id")) %>% 
+  summarise(Voronoi_Area_Cor = cor(Voronoi_Area.x, Voronoi_Area.y),
+            Voronoi_Area_p_value = t.test(Voronoi_Area.x, Voronoi_Area.y)$p.value,
+            Shielding_Cor = cor(Shielding.x, Shielding.y),
+            Shielding_p_value = t.test(Shielding.x, Shielding.y)$p.value,
+            Deviation_Cor = cor(Deviation.x, Deviation.y),
+            Deviation_p_value = t.test(Deviation.x, Deviation.y)$p.value,
+            Pursuit_Cor = cor(Pursuit.x, Pursuit.y),
+            Pursuit_p_value = t.test(Pursuit.x, Pursuit.y)$p.value
+            )
+
+StabilityMetrics <- read_excel("DataBowl/2024-Big-Data-Bowl/Created_DF/StabilityMetrics.xlsx") %>% 
+  arrange(desc(Cor))
+
+
+# Define the color palette
+color_palette <- c("#e15759", "#edc948", "#59a14f")
+
+table = gt(StabilityMetrics) %>%
+  fmt_number(columns = c("Cor", "P_Value"), decimals = 2)%>% 
+  opt_align_table_header(align = "center") %>% 
+  cols_align("center") %>% 
+  opt_row_striping() %>% 
+  gt_theme_espn() %>% 
+  tab_header(
+    title = md("PURSUIT Component Stability"),
+    subtitle = "First to Second half Correlation and T-Test P_value") %>% 
+  tab_source_note("Table: @SethDataScience | 2024 Big Data Bowl")
+
+
+
+
+
+
+gtsave(table, "Stability Metrics.png")
